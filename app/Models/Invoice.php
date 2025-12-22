@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\DB;
 use App\Enums\InvoiceType;
 use App\Enums\InvoiceStatus;
 
@@ -46,12 +47,14 @@ class Invoice extends Model
     // Relations
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        // CORRECTION : Permet d'accéder aux données même si le client est SoftDeleted
+        return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     public function order(): BelongsTo
     {
-        return $this->belongsTo(Order::class);
+        // CORRECTION : Idem pour la commande
+        return $this->belongsTo(Order::class)->withTrashed();
     }
 
     // Scopes
@@ -97,21 +100,35 @@ class Invoice extends Model
     {
         static::creating(function (Invoice $invoice) {
             if (empty($invoice->invoice_number)) {
-                $invoice->invoice_number = self::generateInvoiceNumber($invoice->type);
+                $invoice->invoice_number = self::generateUniqueInvoiceNumber($invoice->type);
             }
         });
     }
 
-    protected static function generateInvoiceNumber(InvoiceType $type): string
+    // CORRECTION MAJEURE : Génération atomique avec verrouillage
+    protected static function generateUniqueInvoiceNumber(InvoiceType $type): string
     {
-        $prefix = $type->prefix();
-        $year = now()->format('Y');
-        $lastInvoice = self::where('type', $type)
-            ->whereYear('created_at', now()->year)
-            ->latest('id')
-            ->first();
-        
-        $sequence = $lastInvoice ? (int) substr($lastInvoice->invoice_number, -4) + 1 : 1;
-        return sprintf('%s-%s-%04d', $prefix, $year, $sequence);
+        return DB::transaction(function () use ($type) {
+            $prefix = $type->prefix();
+            $year = now()->format('Y');
+
+            // Verrouille la dernière ligne pour empêcher une lecture concurrente
+            $lastInvoice = self::where('type', $type)
+                ->whereYear('created_at', now()->year)
+                ->lockForUpdate()
+                ->latest('id')
+                ->first();
+            
+            $sequence = $lastInvoice ? (int) substr($lastInvoice->invoice_number, -4) + 1 : 1;
+            
+            // Sécurité supplémentaire : boucle si le numéro existe déjà
+            do {
+                $number = sprintf('%s-%s-%04d', $prefix, $year, $sequence);
+                $exists = self::where('invoice_number', $number)->exists();
+                if ($exists) $sequence++;
+            } while ($exists);
+
+            return $number;
+        });
     }
 }

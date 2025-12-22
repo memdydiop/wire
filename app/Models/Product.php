@@ -14,6 +14,9 @@ class Product extends Model
 {
     use HasFactory, SoftDeletes;
 
+    // Constante pour configuration facile
+    const LOW_STOCK_THRESHOLD = 5;
+
     protected $fillable = [
         'name',
         'slug',
@@ -123,8 +126,10 @@ class Product extends Model
 
     public function calculateMargin(): float
     {
-        if ($this->cost_price == 0) return 0;
-        return (($this->selling_price - $this->cost_price) / $this->selling_price) * 100;
+        if ($this->selling_price == 0) return 0; // Sécurité anti-division par zéro
+        if ($this->cost_price == 0) return 100; // Marge de 100% si coût nul
+        
+        return (float) (($this->selling_price - $this->cost_price) / $this->selling_price) * 100;
     }
 
     public function updateMargin(): void
@@ -145,7 +150,7 @@ class Product extends Model
 
     public function getAverageRating(): float
     {
-        return (float) $this->reviews()->where('is_approved', true)->avg('rating');
+        return (float) $this->reviews()->where('is_approved', true)->avg('rating') ?? 0.0;
     }
 
     public function getTotalReviews(): int
@@ -156,10 +161,12 @@ class Product extends Model
     public function getStockStatusAttribute(): string
     {
         $totalAvailable = $this->productionBatches()->sum('quantity_available');
+        
         if ($totalAvailable == 0) {
             return 'out_of_stock';
         }
-        if ($totalAvailable <= 5) { // TODO: make this configurable
+        // Utilisation de la constante au lieu du chiffre magique '5'
+        if ($totalAvailable <= self::LOW_STOCK_THRESHOLD) { 
             return 'low_stock';
         }
         return 'in_stock';
@@ -167,6 +174,6 @@ class Product extends Model
     
     public function getAvailableQuantityAttribute(): int
     {
-        return $this->productionBatches()->sum('quantity_available');
+        return (int) $this->productionBatches()->sum('quantity_available');
     }
 }

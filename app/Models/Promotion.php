@@ -11,21 +11,11 @@ class Promotion extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name',
-        'code',
-        'description',
-        'type',
-        'value',
-        'minimum_purchase',
-        'max_uses',
-        'max_uses_per_customer',
-        'current_uses',
-        'start_date',
-        'end_date',
-        'applicable_products',
-        'applicable_categories',
-        'is_active',
-        'combinable',
+        'name', 'code', 'description', 'type', 'value',
+        'minimum_purchase', 'max_uses', 'max_uses_per_customer',
+        'current_uses', 'start_date', 'end_date',
+        'applicable_products', 'applicable_categories',
+        'is_active', 'combinable',
     ];
 
     protected $casts = [
@@ -93,7 +83,7 @@ class Promotion extends Model
 
     public function incrementUses(): void
     {
-        $this->current_uses++;
-        $this->save();
+        // CORRECTION : Incrémentation atomique (plus sûr que read-modify-write)
+        $this->increment('current_uses');
     }
 }

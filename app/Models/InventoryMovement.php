@@ -83,13 +83,14 @@ class InventoryMovement extends Model
         static::created(function (InventoryMovement $movement) {
             $ingredient = $movement->ingredient;
             
+            // CORRECTION: Utilisation des opérations atomiques pour éviter les Race Conditions
             if ($movement->type->isPositive()) {
-                $ingredient->quantity_in_stock += $movement->quantity;
+                $ingredient->increment('quantity_in_stock', $movement->quantity);
             } else {
-                $ingredient->quantity_in_stock -= $movement->quantity;
+                $ingredient->decrement('quantity_in_stock', $movement->quantity);
             }
             
-            $ingredient->save();
+            // Note: increment/decrement sauvegardent automatiquement, pas besoin de $ingredient->save()
         });
     }
 }

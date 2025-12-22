@@ -43,7 +43,8 @@ class OrderItem extends Model
 
     public function product(): BelongsTo
     {
-        return $this->belongsTo(Product::class);
+        // CORRECTION: withTrashed() permet d'accéder au produit même s'il a été supprimé logiquement
+        return $this->belongsTo(Product::class)->withTrashed();
     }
 
     public function variant(): BelongsTo
@@ -54,10 +55,18 @@ class OrderItem extends Model
     // Méthodes
     public function calculateTotal(): void
     {
-        $subtotal = $this->quantity * $this->unit_price;
-        $afterDiscount = $subtotal - $this->discount_amount;
-        $this->tax_amount = $afterDiscount * ($this->tax_rate / 100);
+        // Sécurisation des types pour les calculs
+        $quantity = (int) $this->quantity;
+        $unitPrice = (float) $this->unit_price;
+        $discount = (float) $this->discount_amount;
+        $taxRate = (float) $this->tax_rate;
+
+        $subtotal = $quantity * $unitPrice;
+        $afterDiscount = max(0, $subtotal - $discount); // Évite les totaux négatifs
+        
+        $this->tax_amount = $afterDiscount * ($taxRate / 100);
         $this->total = $afterDiscount + $this->tax_amount;
+        
         $this->save();
     }
 }

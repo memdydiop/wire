@@ -1,0 +1,230 @@
+@import 'tailwindcss';
+@import '../../vendor/livewire/flux/dist/flux.css';
+
+@source '../views';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
+@source '../../vendor/livewire/flux/stubs/**/*.blade.php';
+
+
+
+@theme {
+    --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+    --breakpoint-xs: 425px;
+    --breakpoint-sm: 576px;
+    --breakpoint-md: 768px;
+    --breakpoint-lg: 992px;
+    --breakpoint-xl: 1200px;
+    --breakpoint-2xl: 1400px;
+
+    --text-2xs: 0.625rem;
+    --text-2xs-leading: 1.5;
+    --text-xs: 0.75rem;
+    --text-xs-leading: 1.5;
+    --text-base: 0.8125rem;
+    --text-base-leading: 1.5;
+    --text-sm: 0.875rem;
+    --text-sm-leading: 1.5;
+    --text-md: 1rem;
+    --text-md-leading: 1.5;
+    --text-lg: 1.125rem;
+    --text-lg-leading: 1.5;
+    --text-xl: 1.25rem;
+    --text-xl-leading: 1.5;
+
+
+    --primary: #405189;
+    --secondary:var(--color-purple-500);
+    --success: var(--color-teal-500);
+    --info: var(--color-sky-500);
+    --warning: var(--color-amber-500);
+    --danger: var(--color-red-500);
+    --light: var(--color-zinc-50);
+    --dark: var(--color-zinc-900);
+
+    --primary-rgb: 64, 81, 137;
+    --secondary-rgb: 53, 119, 241;
+    --success-rgb: 10, 179, 156;
+    --info-rgb: 41, 156, 219;
+    --warning-rgb: 247, 184, 75;
+    --danger-rgb: 240, 101, 72;
+    --light-rgb: 243, 246, 249;
+    --dark-rgb: 33, 37, 41;
+
+    --primary-text-emphasis: #364574;
+    --secondary-text-emphasis: #2d65cd;
+    --success-text-emphasis: #099885;
+    --info-text-emphasis: #2385ba;
+    --warning-text-emphasis: #d29c40;
+    --danger-text-emphasis: #cc563d;
+    --light-text-emphasis: #ced4da;
+    --dark-text-emphasis: #343a40;
+
+    --white: #fff;
+    --black: #000;
+    --white-rgb: rgb(255, 255, 255);
+    --black-rgb: rgb(0, 0, 0);
+
+    --gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0));
+
+
+    
+    --color-zinc-50: #fafafa;
+    --color-zinc-100: #f5f5f5;
+    --color-zinc-200: #e5e5e5;
+    --color-zinc-300: #d4d4d4;
+    --color-zinc-400: #a3a3a3;
+    --color-zinc-500: #737373;
+    --color-zinc-600: #525252;
+    --color-zinc-700: #404040;
+    --color-zinc-800: #262626;
+    --color-zinc-900: #171717;
+    --color-zinc-950: #0a0a0a;
+
+    --color-accent: var(--color-neutral-800);
+    --color-accent-content: var(--color-neutral-800);
+    --color-accent-foreground: var(--color-white);
+ 
+
+    --color-primary: var(--primary);
+    --color-primary-content: var(--color-zinc-800);
+    --color-primary-foreground: var(--color-light);
+    --color-primary-emphasis: var(--primary-text-emphasis);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-content: rgb(40, 81, 146);
+    --color-secondary-foreground: var(--color-light);
+    --color-secondary-emphasis: var(--secondary-text-emphasis);    
+    
+    --color-info: var(--info);
+    --color-info-content: var(--color-zinc-800);
+    --color-info-foreground: var(--color-light);    
+    --color-info-emphasis: var(--info-text-emphasis);
+
+    --color-success: var(--success);
+    --color-success-content: var(--color-zinc-800);
+    --color-success-foreground: var(--color-light); 
+    --color-success-emphasis: var(--success-text-emphasis);
+    
+    --color-warning: var(--warning);
+    --color-warning-content: var(--color-zinc-800);
+    --color-warning-foreground: var(--color-light);    
+    --color-warning-emphasis: var(--warning-text-emphasis);
+    
+    --color-danger: var(--danger);
+    --color-danger-content: var(--color-zinc-800);
+    --color-danger-foreground: var(--color-light); 
+    --color-danger-emphasis: var(--danger-text-emphasis);    
+
+    --color-navlist-item: #abb9e8;
+    --color-navlist-item-active: white;
+    
+
+    --shadow-card: 0 1px 2px rgba(56, 65, 74, 0.15);
+
+    --border-image: linear-gradient(to_right,transparent,--theme(--color-slate-400/.25),transparent)1;
+
+    --gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0));
+}
+
+@layer base {
+
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-gray-200, currentColor);
+    }
+
+    .bg-gradient {
+        background-image: var(--gradient);
+    }
+    
+    .mask {
+        vertical-align: middle;
+        display: flex;
+        -webkit-mask-position: 50%;
+        mask-position: 50%;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+    }
+    
+    .mask-squircle {
+        -webkit-mask-image: url("data:image/svg+xml,%3csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M100 0C20 0 0 20 0 100s20 100 100 100 100-20 100-100S180 0 100 0Z'/%3e%3c/svg%3e");
+        mask-image: url("data:image/svg+xml,%3csvg width='200' height='200' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M100 0C20 0 0 20 0 100s20 100 100 100 100-20 100-100S180 0 100 0Z'/%3e%3c/svg%3e");
+    
+    }
+}
+
+[data-flux-field]:not(ui-radio, ui-checkbox) {
+    @apply grid gap-2;
+}
+
+[data-flux-label] {
+    @apply  !mb-0 !leading-tight;
+}
+
+[data-flux-sidebar] [data-flux-dropdown] button  > div + span ,
+[data-flux-header] [data-flux-dropdown] button > div + span,
+[data-flux-sidebar] [data-flux-dropdown] button svg,
+[data-flux-header] [data-flux-dropdown] button svg {
+    @apply text-navlist-item! group-hover:text-navlist-item-active!;
+}
+
+
+input:focus[data-flux-control],
+textarea:focus[data-flux-control],
+select:focus[data-flux-control] {
+    @apply outline-hidden ;
+}
+
+/* \[:where(&)\]:size-4 {
+    @apply size-4;
+} */
+
+.btn {
+
+}
+
+.card {
+    @apply shadow-card bg-white p-6 md:p-4 rounded-xl
+}
+
+.group\/disclosure a {
+    @apply h-8 my-0! py-0! border-0! bg-transparent!
+}
+.group\/disclosure-button[data-open] {
+    @apply text-zinc-300;
+}
+
+.group\/disclosure-button:has( + div a[data-current])  {
+    @apply bg-zinc-800/15 text-white;
+}
+
+
+.group\/disclosure-button:has( + div a[data-current]) #disclosure-chevron {
+    @apply rotate-90!;
+}
+
+.group\/disclosure div a div {
+    @apply text-xs!
+}
+
+.group\/disclosure > div:has(a[data-current]) {
+    @apply block relative border-primary  ;
+}
+
+.group\/disclosure div a {
+    @apply antialiased;
+    @apply ps-10 mb-px! text-navlist-item ;
+    @apply hover:text-navlist-item-active hover:before:bg-zinc-300;
+    @apply before:content-[''] before:bg-navlist-item ;
+    @apply before:absolute before:top-1/2 before:-translate-y-1/2 before:left-4 before:size-1 before:rounded-full;
+    @apply data-current:font-medium data-current:tracking-wide data-current:text-navlist-item-active data-current:before:bg-white data-current:before:size-1.5;
+}
+
+     

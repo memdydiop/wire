@@ -24,12 +24,15 @@ class Payment extends Model
         'paid_at',
     ];
 
-    protected $casts = [
-        'payment_method' => PaymentMethod::class,
-        'status' => PaymentStatus::class,
-        'amount' => 'decimal:2',
-        'paid_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'payment_method' => PaymentMethod::class,
+            'status' => PaymentStatus::class,
+            'amount' => 'decimal:2',
+            'paid_at' => 'datetime',
+        ];
+    }
 
     // Relations
     public function order(): BelongsTo

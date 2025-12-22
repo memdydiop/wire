@@ -44,22 +44,25 @@ class Order extends Model
         'personalization_details',
     ];
 
-    protected $casts = [
-        'status' => OrderStatus::class,
-        'type' => OrderType::class,
-        'fulfillment_method' => FulfillmentMethod::class,
-        'payment_status' => PaymentStatus::class,
-        'payment_method' => PaymentMethod::class,
-        'pickup_date' => 'datetime',
-        'personalization_details' => 'array',
-        'subtotal' => 'decimal:2',
-        'discount_amount' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
-        'delivery_fee' => 'decimal:2',
-        'total' => 'decimal:2',
-        'paid_amount' => 'decimal:2',
-        'requires_personalization' => 'boolean',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'status' => OrderStatus::class,
+            'type' => OrderType::class,
+            'fulfillment_method' => FulfillmentMethod::class,
+            'payment_status' => PaymentStatus::class,
+            'payment_method' => PaymentMethod::class,
+            'pickup_date' => 'datetime',
+            'personalization_details' => 'array',
+            'subtotal' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'tax_amount' => 'decimal:2',
+            'delivery_fee' => 'decimal:2',
+            'total' => 'decimal:2',
+            'paid_amount' => 'decimal:2',
+            'requires_personalization' => 'boolean',
+        ];
+    }
 
     // Relations
     public function customer(): BelongsTo
@@ -157,7 +160,14 @@ class Order extends Model
     {
         $prefix = 'CMD';
         $date = now()->format('Ymd');
-        $lastOrder = self::whereDate('created_at', today())->latest('id')->first();
+        
+        // Ajout de withTrashed() pour inclure les commandes supprimées dans le calcul de la séquence
+        // afin d'éviter les collisions de numéros de commande.
+        $lastOrder = self::withTrashed()
+                         ->whereDate('created_at', today())
+                         ->latest('id')
+                         ->first();
+                         
         $sequence = $lastOrder ? (int) substr($lastOrder->order_number, -4) + 1 : 1;
         return sprintf('%s-%s-%04d', $prefix, $date, $sequence);
     }

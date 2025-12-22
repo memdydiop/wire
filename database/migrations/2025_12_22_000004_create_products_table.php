@@ -3,7 +3,6 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use App\Enums\StorageType;
 use App\Enums\DifficultyLevel;
 
 return new class extends Migration
@@ -22,10 +21,10 @@ return new class extends Migration
             $table->decimal('cost_price', 10, 2)->default(0);
             $table->decimal('selling_price', 10, 2);
             $table->decimal('margin_percentage', 5, 2)->nullable();
-            $table->decimal('vat_rate', 5, 2)->default(5.5);
+            $table->decimal('vat_rate', 5, 2)->default(5.5); // Taux réduit alimentaire standard
             $table->integer('preparation_time')->nullable();
             $table->integer('cooking_time')->nullable();
-            $table->integer('shelf_life')->nullable();
+            $table->integer('shelf_life')->nullable(); // Durée de conservation en jours/heures
             $table->string('storage_type')->nullable();
             $table->json('allergens')->nullable();
             $table->json('nutritional_info')->nullable();

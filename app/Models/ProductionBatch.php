@@ -13,25 +13,26 @@ class ProductionBatch extends Model
 {
     use HasFactory;
 
-    // Note: Assurez-vous que le nom de la table est correct dans la migration
-    // protected $table = 'production_batches'; 
-
     protected $fillable = [
         'batch_number', 'production_date', 'product_id', 'recipe_id', 'user_id',
         'planned_quantity', 'produced_quantity', 'defective_quantity', 'status',
         'started_at', 'completed_at', 'production_cost', 'notes', 'quality_checks',
     ];
 
-    protected $casts = [
-        'production_date' => 'date',
-        'status' => ProductionStatus::class,
-        'started_at' => 'datetime',
-        'completed_at' => 'datetime',
-        'production_cost' => 'decimal:2',
-        'quality_checks' => 'array',
-        'planned_quantity' => 'decimal:3',
-        'produced_quantity' => 'decimal:3',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'production_date' => 'date',
+            'status' => ProductionStatus::class,
+            'started_at' => 'datetime',
+            'completed_at' => 'datetime',
+            'production_cost' => 'decimal:2',
+            'quality_checks' => 'array',
+            'planned_quantity' => 'decimal:3',
+            'produced_quantity' => 'decimal:3',
+            'defective_quantity' => 'decimal:3',
+        ];
+    }
 
     // Relations
     public function product(): BelongsTo { return $this->belongsTo(Product::class); }
@@ -61,7 +62,6 @@ class ProductionBatch extends Model
 
     public function getEfficiencyRate(): float
     {
-        // CORRECTION : Éviter division par zéro
         if ($this->planned_quantity <= 0) return 0;
         
         $produced = $this->produced_quantity ?? 0;
@@ -72,7 +72,7 @@ class ProductionBatch extends Model
     {
         static::creating(function (ProductionBatch $batch) {
             if (empty($batch->batch_number)) {
-                // CORRECTION : Génération unique avec transaction
+                // Génération unique avec transaction et verrouillage
                 $batch->batch_number = DB::transaction(function () {
                     $prefix = 'PROD';
                     $date = now()->format('Ymd');

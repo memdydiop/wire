@@ -27,13 +27,16 @@ class InventoryMovement extends Model
         'expiry_date',
     ];
 
-    protected $casts = [
-        'type' => InventoryMovementType::class,
-        'quantity' => 'decimal:3',
-        'unit_cost' => 'decimal:2',
-        'total_cost' => 'decimal:2',
-        'expiry_date' => 'date',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'type' => InventoryMovementType::class,
+            'quantity' => 'decimal:3',
+            'unit_cost' => 'decimal:2',
+            'total_cost' => 'decimal:2',
+            'expiry_date' => 'date',
+        ];
+    }
 
     // Relations
     public function ingredient(): BelongsTo
@@ -83,14 +86,12 @@ class InventoryMovement extends Model
         static::created(function (InventoryMovement $movement) {
             $ingredient = $movement->ingredient;
             
-            // CORRECTION: Utilisation des opérations atomiques pour éviter les Race Conditions
+            // Note: Assurez-vous que votre Enum InventoryMovementType implémente bien la méthode isPositive()
             if ($movement->type->isPositive()) {
                 $ingredient->increment('quantity_in_stock', $movement->quantity);
             } else {
                 $ingredient->decrement('quantity_in_stock', $movement->quantity);
             }
-            
-            // Note: increment/decrement sauvegardent automatiquement, pas besoin de $ingredient->save()
         });
     }
 }

@@ -20,7 +20,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name', 'email', 'password', 'phone', 'username',
-        'avatar_url', 'address', 'city', 'country', // Essentiel pour stocker le code pays
+        'avatar_url', 'address', 'city', 'country',
         'last_login_at', 'last_login_ip', 'suspended_at', 'email_verified_at',
     ];
 
@@ -123,9 +123,6 @@ class User extends Authenticatable
 
     // ========== LOGIQUE MÉTIER ==========
 
-    /**
-     * Normalise le numéro via la librairie Propaganistas/LaravelPhone
-     */
     public static function normalizePhone(?string $phone, string $countryCode = 'CI'): ?string
     {
         if (empty($phone)) return null;
@@ -133,13 +130,11 @@ class User extends Authenticatable
         try {
             return (string) PhoneNumber::make($phone, $countryCode)->formatE164();
         } catch (\Exception $e) {
+            // Fallback si le parsing échoue
             return preg_replace('/[^0-9+]/', '', $phone);
         }
     }
 
-    /**
-     * Création centralisée via invitation
-     */
     public static function createFromInvitation(array $data, Invitation $invitation): self
     {
         return DB::transaction(function () use ($data, $invitation) {

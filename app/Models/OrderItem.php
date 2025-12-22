@@ -26,14 +26,17 @@ class OrderItem extends Model
         'special_instructions',
     ];
 
-    protected $casts = [
-        'unit_price' => 'decimal:2',
-        'discount_amount' => 'decimal:2',
-        'tax_rate' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
-        'total' => 'decimal:2',
-        'customization' => 'array',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'unit_price' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'tax_rate' => 'decimal:2',
+            'tax_amount' => 'decimal:2',
+            'total' => 'decimal:2',
+            'customization' => 'array',
+        ];
+    }
 
     // Relations
     public function order(): BelongsTo
@@ -43,7 +46,8 @@ class OrderItem extends Model
 
     public function product(): BelongsTo
     {
-        // CORRECTION: withTrashed() permet d'accéder au produit même s'il a été supprimé logiquement
+        // withTrashed() permet de conserver l'accès aux données produit 
+        // dans l'historique de commande même si le produit est supprimé du catalogue.
         return $this->belongsTo(Product::class)->withTrashed();
     }
 
@@ -55,14 +59,13 @@ class OrderItem extends Model
     // Méthodes
     public function calculateTotal(): void
     {
-        // Sécurisation des types pour les calculs
         $quantity = (int) $this->quantity;
         $unitPrice = (float) $this->unit_price;
         $discount = (float) $this->discount_amount;
         $taxRate = (float) $this->tax_rate;
 
         $subtotal = $quantity * $unitPrice;
-        $afterDiscount = max(0, $subtotal - $discount); // Évite les totaux négatifs
+        $afterDiscount = max(0, $subtotal - $discount);
         
         $this->tax_amount = $afterDiscount * ($taxRate / 100);
         $this->total = $afterDiscount + $this->tax_amount;

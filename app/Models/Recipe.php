@@ -23,10 +23,15 @@ class Recipe extends Model
         'is_active',
     ];
 
-    protected $casts = [
-        'total_cost' => 'decimal:2',
-        'is_active' => 'boolean',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'total_cost' => 'decimal:2',
+            'yield_quantity' => 'decimal:2', // Ajout conseillé si c'est une quantité non entière
+            'is_active' => 'boolean',
+            'version' => 'integer',
+        ];
+    }
 
     // Relations
     public function product(): BelongsTo
@@ -61,6 +66,7 @@ class Recipe extends Model
     // Méthodes
     public function calculateTotalCost(): float
     {
+        // Eager load des ingrédients conseillé lors de l'appel pour éviter N+1
         return (float) $this->ingredients->sum(function ($ingredient) {
             return $ingredient->pivot->cost;
         });

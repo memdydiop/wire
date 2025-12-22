@@ -31,29 +31,32 @@ class Invoice extends Model
         'paid_at',
     ];
 
-    protected $casts = [
-        'type' => InvoiceType::class,
-        'status' => InvoiceStatus::class,
-        'invoice_date' => 'date',
-        'due_date' => 'date',
-        'subtotal' => 'decimal:2',
-        'discount_amount' => 'decimal:2',
-        'tax_amount' => 'decimal:2',
-        'total' => 'decimal:2',
-        'sent_at' => 'datetime',
-        'paid_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'type' => InvoiceType::class,
+            'status' => InvoiceStatus::class,
+            'invoice_date' => 'date',
+            'due_date' => 'date',
+            'subtotal' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'tax_amount' => 'decimal:2',
+            'total' => 'decimal:2',
+            'sent_at' => 'datetime',
+            'paid_at' => 'datetime',
+        ];
+    }
 
     // Relations
     public function customer(): BelongsTo
     {
-        // CORRECTION : Permet d'accéder aux données même si le client est SoftDeleted
+        // Permet d'accéder aux données même si le client est SoftDeleted
         return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     public function order(): BelongsTo
     {
-        // CORRECTION : Idem pour la commande
+        // Idem pour la commande
         return $this->belongsTo(Order::class)->withTrashed();
     }
 
@@ -105,7 +108,6 @@ class Invoice extends Model
         });
     }
 
-    // CORRECTION MAJEURE : Génération atomique avec verrouillage
     protected static function generateUniqueInvoiceNumber(InvoiceType $type): string
     {
         return DB::transaction(function () use ($type) {

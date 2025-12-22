@@ -14,7 +14,12 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->text('description')->nullable();
             $table->string('image')->nullable();
-            $table->foreignId('parent_id')->nullable()->constrained('categories')->onDelete('cascade');
+            // Utilisation de constrained avec nullOnDelete pour éviter les erreurs orphelines
+            // si on supprime physiquement un parent.
+            $table->foreignId('parent_id')
+                  ->nullable()
+                  ->constrained('categories')
+                  ->onDelete('cascade'); 
             $table->integer('order')->default(0);
             $table->boolean('is_active')->default(true);
             $table->timestamps();

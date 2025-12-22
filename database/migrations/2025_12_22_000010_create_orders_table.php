@@ -29,7 +29,8 @@ return new class extends Migration
             $table->decimal('total', 10, 2);
             $table->decimal('paid_amount', 10, 2)->default(0);
             $table->string('payment_status')->default(PaymentStatus::UNPAID->value);
-            $table->string('payment_method')->default(PaymentMethod::CASH->value)->nullable();
+            // Default + Nullable : permet de créer une commande sans méthode de paiement définie initialement
+            $table->string('payment_method')->nullable()->default(PaymentMethod::CASH->value);
             $table->dateTime('pickup_date')->nullable();
             $table->time('pickup_time')->nullable();
             $table->string('delivery_address')->nullable();

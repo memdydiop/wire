@@ -14,7 +14,6 @@ class Product extends Model
 {
     use HasFactory, SoftDeletes;
 
-    // Constante pour configuration facile
     const LOW_STOCK_THRESHOLD = 5;
 
     protected $fillable = [
@@ -45,21 +44,24 @@ class Product extends Model
         'daily_production_limit',
     ];
 
-    protected $casts = [
-        'base_price' => 'decimal:2',
-        'cost_price' => 'decimal:2',
-        'selling_price' => 'decimal:2',
-        'margin_percentage' => 'decimal:2',
-        'vat_rate' => 'decimal:2',
-        'storage_type' => StorageType::class,
-        'difficulty_level' => DifficultyLevel::class,
-        'allergens' => 'array',
-        'nutritional_info' => 'array',
-        'is_seasonal' => 'boolean',
-        'is_featured' => 'boolean',
-        'is_available' => 'boolean',
-        'requires_advance_order' => 'boolean',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'base_price' => 'decimal:2',
+            'cost_price' => 'decimal:2',
+            'selling_price' => 'decimal:2',
+            'margin_percentage' => 'decimal:2',
+            'vat_rate' => 'decimal:2',
+            'storage_type' => StorageType::class,
+            'difficulty_level' => DifficultyLevel::class,
+            'allergens' => 'array',
+            'nutritional_info' => 'array',
+            'is_seasonal' => 'boolean',
+            'is_featured' => 'boolean',
+            'is_available' => 'boolean',
+            'requires_advance_order' => 'boolean',
+        ];
+    }
 
     // Relations
     public function category(): BelongsTo
@@ -121,13 +123,14 @@ class Product extends Model
     // Méthodes
     public function getPrimaryImage(): ?ProductImage
     {
+        // Suppose que le modèle ProductImage possède une colonne 'is_primary'
         return $this->images()->where('is_primary', true)->first();
     }
 
     public function calculateMargin(): float
     {
-        if ($this->selling_price == 0) return 0; // Sécurité anti-division par zéro
-        if ($this->cost_price == 0) return 100; // Marge de 100% si coût nul
+        if ($this->selling_price == 0) return 0;
+        if ($this->cost_price == 0) return 100;
         
         return (float) (($this->selling_price - $this->cost_price) / $this->selling_price) * 100;
     }
@@ -150,7 +153,7 @@ class Product extends Model
 
     public function getAverageRating(): float
     {
-        return (float) $this->reviews()->where('is_approved', true)->avg('rating') ?? 0.0;
+        return (float) ($this->reviews()->where('is_approved', true)->avg('rating') ?? 0.0);
     }
 
     public function getTotalReviews(): int
@@ -165,7 +168,7 @@ class Product extends Model
         if ($totalAvailable == 0) {
             return 'out_of_stock';
         }
-        // Utilisation de la constante au lieu du chiffre magique '5'
+        
         if ($totalAvailable <= self::LOW_STOCK_THRESHOLD) { 
             return 'low_stock';
         }

@@ -33,11 +33,10 @@ return new class extends Migration
             $table->rememberToken();
             $table->timestamps();
 
-            // Index PostgreSQL
-            // Note: email et username sont déjà indexés via unique()
+            // Index PostgreSQL et MySQL
             $table->index('suspended_at');
             $table->index('last_login_at');
-            $table->index(['created_at', 'suspended_at']); // Utile pour les tris admin
+            $table->index(['created_at', 'suspended_at']);
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

@@ -23,15 +23,18 @@ class Customer extends Model
         'loyalty_points', 'customer_type', 'accepts_marketing', 'is_active',
     ];
 
-    protected $casts = [
-        'birth_date' => 'date',
-        'preferences' => 'array',
-        'allergens' => 'array',
-        'customer_type' => CustomerType::class,
-        'accepts_marketing' => 'boolean',
-        'is_active' => 'boolean',
-        'loyalty_points' => 'integer',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'birth_date' => 'date',
+            'preferences' => 'array',
+            'allergens' => 'array',
+            'customer_type' => CustomerType::class,
+            'accepts_marketing' => 'boolean',
+            'is_active' => 'boolean',
+            'loyalty_points' => 'integer',
+        ];
+    }
 
     // Relations
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
@@ -51,25 +54,29 @@ class Customer extends Model
     {
         return "{$this->first_name} {$this->last_name}";
     }
+    
+    public function isVip(): bool
+    {
+        return $this->customer_type === CustomerType::VIP;
+    }
 
-    // CORRECTION : Transaction atomique pour l'ajout de points
+    // Transaction atomique pour l'ajout de points
     public function addLoyaltyPoints(int $points, ?Order $order = null, string $description = null): void
     {
         DB::transaction(function () use ($points, $order, $description) {
-            // Incrémentation directe en base de données
             $this->increment('loyalty_points', $points);
 
             $this->loyaltyTransactions()->create([
                 'order_id' => $order?->id,
                 'type' => LoyaltyTransactionType::EARNED,
                 'points' => $points,
-                'balance_after' => $this->refresh()->loyalty_points, // Récupère la valeur réelle
+                'balance_after' => $this->refresh()->loyalty_points,
                 'description' => $description ?? "Points gagnés",
             ]);
         });
     }
 
-    // CORRECTION : Verrouillage pessimiste pour le retrait de points
+    // Verrouillage pessimiste pour le retrait de points
     public function redeemLoyaltyPoints(int $points, ?Order $order = null, string $description = null): bool
     {
         return DB::transaction(function () use ($points, $order, $description) {

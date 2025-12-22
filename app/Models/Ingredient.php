@@ -31,17 +31,20 @@ class Ingredient extends Model
         'is_active',
     ];
 
-    protected $casts = [
-        'unit_price' => 'decimal:2',
-        'quantity_in_stock' => 'decimal:3',
-        'minimum_stock' => 'decimal:3',
-        'optimal_stock' => 'decimal:3',
-        'vat_rate' => 'decimal:2',
-        'is_allergenic' => 'boolean',
-        'is_active' => 'boolean',
-        'allergens' => 'array',
-        'expiry_date' => 'date',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'unit_price' => 'decimal:2',
+            'quantity_in_stock' => 'decimal:3',
+            'minimum_stock' => 'decimal:3',
+            'optimal_stock' => 'decimal:3',
+            'vat_rate' => 'decimal:2',
+            'is_allergenic' => 'boolean',
+            'is_active' => 'boolean',
+            'allergens' => 'array',
+            'expiry_date' => 'date',
+        ];
+    }
 
     // Relations
     public function supplier(): BelongsTo
@@ -95,7 +98,7 @@ class Ingredient extends Model
 
     public function isOutOfStock(): bool
     {
-        return $this->quantity_in_stock == 0;
+        return $this->quantity_in_stock <= 0; // Correction: <= 0 est plus sûr pour les décimaux
     }
 
     public function isExpiringSoon(int $days = 7): bool

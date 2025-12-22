@@ -23,10 +23,14 @@ class ProductVariant extends Model
         'stock_quantity',
     ];
 
-    protected $casts = [
-        'price_modifier' => 'decimal:2',
-        'is_available' => 'boolean',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'price_modifier' => 'decimal:2',
+            'is_available' => 'boolean',
+            'stock_quantity' => 'integer',
+        ];
+    }
 
     // Relations
     public function product(): BelongsTo
@@ -58,6 +62,7 @@ class ProductVariant extends Model
     // Méthodes
     public function getFinalPrice(): float
     {
+        // Attention : vérifiez que la relation product est chargée pour éviter les N+1 query
         return (float) ($this->product->selling_price + $this->price_modifier);
     }
 

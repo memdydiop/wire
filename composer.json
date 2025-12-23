@@ -19,6 +19,7 @@
         "maatwebsite/excel": "^3.1",
         "php-flasher/flasher-laravel": "^2.3",
         "propaganistas/laravel-phone": "^6.0",
+        "spatie/laravel-activitylog": "^4.10",
         "spatie/laravel-permission": "^6.24"
     },
     "require-dev": {

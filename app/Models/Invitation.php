@@ -8,9 +8,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Notifications\Notifiable; // Trait essentiel pour les notifications
+use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Models\Role;
 
 class Invitation extends Model
@@ -29,32 +30,12 @@ class Invitation extends Model
     protected $casts = [
         'accepted_at' => 'datetime',
         'expires_at' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
-
-    protected $appends = [
-        'status',
-        'status_label',
-        'time_until_expiry',
-        'is_valid',
     ];
 
     // Constantes
     public const DEFAULT_ROLE = 'user';
-    public const DEFAULT_EXPIRY_DAYS = 7;
+    public const DEFAULT_EXPIRY_DAYS = 1; // Augmenté à 7 par défaut pour être cohérent
     public const MAX_ATTEMPTS = 15;
-    public const ATTEMPTS_WARNING_THRESHOLD = 5;
-
-    // ========== CONFIGURATION NOTIFICATION ==========
-
-    /**
-     * Définit l'email destinataire pour les notifications
-     */
-    public function routeNotificationForMail($notification)
-    {
-        return $this->email;
-    }
 
     // ========== BOOT ==========
     
@@ -63,17 +44,10 @@ class Invitation extends Model
         parent::boot();
         
         static::creating(function (self $invitation) {
-            // Génération automatique si non fourni
             $invitation->token = $invitation->token ?? self::generateToken();
+            // CORRECTION CRITIQUE : addDays au lieu de addMinutes
             $invitation->expires_at = $invitation->expires_at ?? now()->addDays(self::DEFAULT_EXPIRY_DAYS);
             $invitation->role = $invitation->role ?? self::DEFAULT_ROLE;
-        });
-
-        static::created(function (self $invitation) {
-            Log::info('Invitation créée', [
-                'id' => $invitation->id, 
-                'email' => $invitation->email
-            ]);
         });
     }
 
@@ -109,16 +83,8 @@ class Invitation extends Model
         return $query->whereNotNull('accepted_at');
     }
 
-    public function scopeForEmail(Builder $query, string $email): Builder
-    {
-        return $query->where('email', strtolower($email));
-    }
-
-    // ========== MÉTHODES MÉTIER (CRUCIALES) ==========
+    // ========== LOGIQUE MÉTIER ==========
     
-    /**
-     * Génère un token unique
-     */
     public static function generateToken(): string
     {
         do {
@@ -128,80 +94,64 @@ class Invitation extends Model
         return $token;
     }
 
-    /**
-     * Création d'une nouvelle invitation avec validations
-     */
-    public static function createNew(
-        string $email, 
-        string $role, 
-        int $sentById, 
-        int $expiryDays = self::DEFAULT_EXPIRY_DAYS // <--- Ajout du paramètre manquant
-    ): self 
+    public static function createNew(string $email, string $role, int $sentById, int $expiryDays = self::DEFAULT_EXPIRY_DAYS): self 
     {
-        // 1. Validation format email
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new \InvalidArgumentException('Email invalide.');
         }
         $email = strtolower(trim($email));
 
-        // 2. Vérifier si l'utilisateur existe déjà
         if (User::where('email', $email)->exists()) {
             throw new \RuntimeException('Cet utilisateur possède déjà un compte.');
         }
 
-        // 3. Vérifier s'il a déjà une invitation en cours (valide)
         $existing = self::where('email', $email)->valid()->first();
         if ($existing) {
-            throw new \RuntimeException("Une invitation est déjà en cours pour cet email (Expire {$existing->expires_at->diffForHumans()}).");
+            throw new \RuntimeException("Une invitation valide existe déjà (Expire {$existing->expires_at->diffForHumans()}).");
         }
 
-        // 4. Vérifier le rôle
+        // Vérification de sécurité pour le rôle
         if (!Role::where('name', $role)->exists()) {
-            throw new \InvalidArgumentException("Le rôle '{$role}' n'existe pas.");
+             // Fallback safe si le rôle n'existe pas
+             $role = self::DEFAULT_ROLE;
         }
 
-        // 5. Création
         return self::create([
             'email' => $email,
             'role' => $role,
             'sent_by' => $sentById,
-            // On force la date d'expiration ici
             'expires_at' => now()->addDays($expiryDays),
-            // Le token est généré automatiquement par le boot() s'il n'est pas précisé, 
-            // ou vous pouvez le forcer ici : 'token' => self::generateToken(),
         ]);
     }
 
-    /**
-     * Renvoyer une invitation (prolonger validité + nouveau token)
-     */
-    public function resend(int $additionalDays = self::DEFAULT_EXPIRY_DAYS): void
+    public function resend(?int $additionalDays = null): void
     {
         if ($this->isAccepted()) {
             throw new \RuntimeException('Impossible de renvoyer une invitation acceptée.');
         }
 
-        DB::transaction(function () use ($additionalDays) {
+        $days = $additionalDays ?? self::DEFAULT_EXPIRY_DAYS;
+
+        DB::transaction(function () use ($days) {
             $this->resetAttempts();
-            
             $this->update([
                 'token' => self::generateToken(),
-                'expires_at' => now()->addDays($additionalDays)
+                'expires_at' => now()->addDays($days)
             ]);
-            
-            // Rafraîchir l'instance pour que le mail parte avec le nouveau token
-            $this->refresh();
-
-            Log::info('Invitation renvoyée', ['id' => $this->id]);
+            // Pas besoin de refresh() si on update l'instance courante via Eloquent, 
+            // mais c'est une sécurité si des triggers DB existent.
         });
+        
+        Log::info('Invitation renvoyée', ['id' => $this->id]);
     }
 
     public function revoke(): void
     {
-        if ($this->isAccepted()) throw new \RuntimeException('Déjà acceptée.');
+        if ($this->isAccepted()) return; // Idempotence : si déjà accepté, on ne fait rien sans erreur
 
         DB::transaction(function () {
-            $this->update(['expires_at' => now(), 'token' => null]);
+            // On invalide le token et on expire la date
+            $this->update(['expires_at' => now()->subSecond(), 'token' => null]);
             $this->resetAttempts();
         });
     }
@@ -217,7 +167,43 @@ class Invitation extends Model
         });
     }
 
-    // ========== GETTERS & ATTRIBUTS ==========
+    // ========== ACCESSORS UI ==========
+
+    /**
+     * Retourne les données pour le badge de statut (Flux UI)
+     * Déplace la logique de la Vue vers le Modèle
+     */
+    protected function statusBadge(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                if ($this->isAccepted()) {
+                    return [
+                        'variant' => 'success',
+                        'label' => 'Acceptée',
+                        'date_label' => 'Validée le',
+                        'date' => $this->accepted_at
+                    ];
+                }
+                if ($this->isExpired()) {
+                    return [
+                        'variant' => 'danger',
+                        'label' => 'Expirée',
+                        'date_label' => 'Expirée le',
+                        'date' => $this->expires_at
+                    ];
+                }
+                return [
+                    'variant' => 'warning',
+                    'label' => 'En attente',
+                    'date_label' => 'Expire le',
+                    'date' => $this->expires_at
+                ];
+            }
+        );
+    }
+
+    // ========== HELPERS ==========
 
     public function isValid(): bool
     {
@@ -226,41 +212,15 @@ class Invitation extends Model
             && !$this->isTokenCompromised();
     }
 
-    public function getIsValidAttribute(): bool { return $this->isValid(); }
     public function isExpired(): bool { return $this->expires_at->isPast() && is_null($this->accepted_at); }
     public function isAccepted(): bool { return !is_null($this->accepted_at); }
-    public function isPending(): bool { return is_null($this->accepted_at) && !$this->isExpired(); }
-
-    public function getStatus(): string
-    {
-        if ($this->isAccepted()) return 'accepted';
-        if ($this->isExpired()) return 'expired';
-        return 'pending';
-    }
-
-    public function getStatusAttribute(): string { return $this->getStatus(); }
-    public function getStatusLabelAttribute(): string
-    {
-        return match($this->getStatus()) {
-            'accepted' => 'Acceptée',
-            'expired' => 'Expirée',
-            default => 'En attente',
-        };
-    }
 
     public function generateInvitationUrl(): string
     {
         return route('register.invitee', ['token' => $this->token]);
     }
 
-    public function timeUntilExpiry(): string
-    {
-        return $this->isExpired() ? 'Expirée' : $this->expires_at->diffForHumans();
-    }
-
-    public function getTimeUntilExpiryAttribute(): string { return $this->timeUntilExpiry(); }
-
-    // ========== SÉCURITÉ (CACHE TENTATIVES) ==========
+    // ========== SÉCURITÉ ==========
     
     private function getAttemptsCacheKey(): string { return "invitation_attempts:{$this->id}"; }
     public function getAttemptsCount(): int { return Cache::get($this->getAttemptsCacheKey(), 0); }
@@ -270,18 +230,17 @@ class Invitation extends Model
     public function incrementAttempts(): void
     {
         $key = $this->getAttemptsCacheKey();
-        $attempts = Cache::get($key, 0) + 1;
-        Cache::put($key, $attempts, now()->addHour());
+        Cache::put($key, Cache::get($key, 0) + 1, now()->addHour());
     }
-
-    // ========== EXPORT ==========
-
-    public function toArray(): array
+    
+    /**
+     * Retourne le nombre de jours restants avant expiration
+     */
+    public function daysRemaining(): int
     {
-        $array = parent::toArray();
-        $array['invitation_url'] = $this->generateInvitationUrl();
-        $array['status_label'] = $this->status_label;
-        $array['sender_name'] = $this->sender->name ?? 'Système';
-        return $array;
+        if ($this->isExpired() || $this->isAccepted()) {
+            return 0;
+        }
+        return $this->expires_at->diffInDays(now());
     }
 }

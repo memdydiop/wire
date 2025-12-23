@@ -2,21 +2,24 @@
 
 namespace App\Models;
 
-use Illuminate\Auth\Events\Registered;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Laravel\Fortify\TwoFactorAuthenticatable;
+use Illuminate\Support\Facades\DB;
+use Spatie\Activitylog\LogOptions;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Auth\Events\Registered;
 use Spatie\Permission\Traits\HasRoles;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Notifications\Notifiable;
 use Propaganistas\LaravelPhone\PhoneNumber;
+use Spatie\Activitylog\Traits\LogsActivity;
+use Laravel\Fortify\TwoFactorAuthenticatable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable
 {
-    use HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable;
+    use HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable, LogsActivity;
 
     protected $fillable = [
         'name', 'email', 'password', 'phone', 'username',
@@ -123,6 +126,9 @@ class User extends Authenticatable
 
     // ========== LOGIQUE MÉTIER ==========
 
+    /**
+     * Normalise le numéro via la librairie Propaganistas/LaravelPhone
+     */
     public static function normalizePhone(?string $phone, string $countryCode = 'CI'): ?string
     {
         if (empty($phone)) return null;
@@ -130,11 +136,13 @@ class User extends Authenticatable
         try {
             return (string) PhoneNumber::make($phone, $countryCode)->formatE164();
         } catch (\Exception $e) {
-            // Fallback si le parsing échoue
             return preg_replace('/[^0-9+]/', '', $phone);
         }
     }
 
+    /**
+     * Création centralisée via invitation
+     */
     public static function createFromInvitation(array $data, Invitation $invitation): self
     {
         return DB::transaction(function () use ($data, $invitation) {
@@ -161,42 +169,72 @@ class User extends Authenticatable
         });
     }
 
+    // ========== ACTIONS D'ÉTAT (NOUVEAU) ==========
+
+    /**
+     * Suspendre l'utilisateur
+     */
+    public function suspend(): void
+    {
+        if (!$this->canBeSuspended()) {
+            throw new \LogicException("Action non autorisée sur cet utilisateur.");
+        }
+        $this->update(['suspended_at' => now()]);
+    }
+
+    /**
+     * Réactiver l'utilisateur
+     */
+    public function unSuspend(): void
+    {
+        $this->update(['suspended_at' => null]);
+    }
+
     // ========== SÉCURITÉ & DROITS ==========
 
     public function canBeModified(): bool
     {
-        $auth = auth()->user();
-        if (!$auth) return false;
+        $authUser = auth()->user();
+        if (!$authUser) return false;
         
-        if ($auth->id === $this->id) return $this->isActive();
-        if ($auth->hasRole('super-admin')) return true;
-        if ($this->hasRole('super-admin')) return false;
-        if ($auth->hasRole('admin')) return !$this->hasRole('admin');
+        if ($authUser->id === $this->id) return false; // On peut se modifier soi-même (profil)
+        if ($authUser->hasGhostRole()) return true;
+        if ($this->hasGhostRole()) return false; // Personne ne modifie un Super Admin sauf lui-même
+        if ($authUser->hasAdminRole()) return !$this->hasRole('admin');
         
         return false;
     }
 
     public function canBeDeleted(): bool
     {
-        $auth = auth()->user();
-        if (!$auth) return false;
+        $authUser = auth()->user();
+        if (!$authUser) return false;
 
-        if ($auth->id === $this->id) return false;
-        if ($this->hasRole('super-admin')) return false;
-        if ($auth->hasRole('super-admin')) return true;
-        if ($auth->hasRole('admin')) return !$this->hasRole('admin');
+        if ($authUser->id === $this->id) return false; // On ne peut pas se supprimer soi-même
+        if ($this->hasGhostRole()) return false;
+        if ($authUser->hasGhostRole()) return true;
+        if ($authUser->hasAdminRole()) return !$this->hasRole('admin');
 
         return false;
     }
 
-    public function hasAdminRole(): bool 
-    { 
-        return $this->hasAnyRole(['super-admin', 'admin', 'ghost']); 
+    public function canBeSuspended(): bool
+    {
+        $authUser = auth()->user();
+        if (!$authUser) return false;
+
+        if ($authUser->id === $this->id) return false; // On ne peut pas se suspendre soi-même
+        return $this->canBeModified();
     }
 
-    public function hasSuperAdminRole(): bool 
+    public function hasAdminRole(): bool 
     { 
-        return $this->hasRole('super-admin'); 
+        return $this->hasRole('admin'); 
+    }
+
+    public function hasGhostRole(): bool 
+    { 
+        return $this->hasRole('ghost'); 
     }
 
     // ========== UTILITAIRES ==========
@@ -208,10 +246,12 @@ class User extends Authenticatable
 
     public function avatar(): string
     {
-        if ($this->hasCustomAvatar()) return $this->avatar_url;
+        if ($this->hasCustomAvatar()) {
+            return Storage::url($this->avatar_url);
+        }
         
         $name = urlencode($this->name);
-        return "https://ui-avatars.com/api/?name={$name}&background=random&color=fff&size=128";
+        return "https://ui-avatars.com/api/?name={$name}&background=405189&color=fff&size=128&bold=true";
     }
 
     public function initials(): string
@@ -246,5 +286,15 @@ class User extends Authenticatable
     public function getLastActivityAttribute(): ?string
     {
         return $this->last_login_at?->diffForHumans() ?? 'Jamais';
+    }
+
+    // 4. Configuration des options de log
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['name', 'email', 'username', 'avatar_url']) // Champs à surveiller
+            ->logOnlyDirty() // Ne log que ce qui a changé
+            ->dontSubmitEmptyLogs() // N'enregistre rien si aucun changement
+            ->setDescriptionForEvent(fn(string $eventName) => "Le compte a été {$eventName}");
     }
 }

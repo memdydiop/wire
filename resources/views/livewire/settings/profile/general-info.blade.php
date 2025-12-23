@@ -1,242 +1,117 @@
 <?php
+
 use Livewire\Volt\Component;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use App\Models\User;
 
 new class extends Component {
-    public string $name;
-    public string $username;
-    public string $phone;
-    public string $address;
-    public string $city;
-    public string $country;
+    public string $name = '';
+    public string $email = '';
+    public string $username = '';
+    public string $phone = '';
+    public string $address = '';
+    public string $city = '';
+    public string $country = '';
 
     public function mount()
     {
-        
         $user = Auth::user();
+        // Remplissage plus concis
         $this->name = $user->name ?? '';
         $this->email = $user->email ?? '';
         $this->username = $user->username ?? '';
-        $this->address = $user->address ?? '';
         $this->phone = $user->phone ?? '';
+        $this->address = $user->address ?? '';
         $this->city = $user->city ?? '';
         $this->country = $user->country ?? '';
-        $this->avatar_url = $user->avatar_url ?? '';
     }
 
     public function rules()
     {
         return [
-            'name' => [
-                'required',
-                'string',
-                'min:2',
-                'max:255',
-                'regex:/^[\pL\s\-\']+$/u' // Lettres, espaces, tirets et apostrophes
-            ],
+            'name' => ['required', 'string', 'min:2', 'max:255'],
             'username' => [
                 'nullable',
                 'string',
                 'min:3',
                 'max:50',
-                'regex:/^[a-zA-Z0-9_-]+$/', // Lettres, chiffres, underscore et tiret
+                'alpha_dash', // lettres, nombres, tirets, underscores uniquement
                 Rule::unique('users')->ignore(Auth::id())
             ],
-            'phone' => [
-                'nullable',
-                'string',
-                'regex:/^[\d\s\+\-\(\)]+$/', // Chiffres, espaces, +, -, (, )
-                'min:10',
-                'max:20',
-                Rule::unique('users')->ignore(Auth::id())
-            ],
-            'address' => [
-                'nullable',
-                'string',
-                'max:255'
-            ],
-            'city' => [
-                'nullable',
-                'string',
-                'min:2',
-                'max:100',
-            ],
-            'country' => [
-                'nullable',
-                'string',
-                'min:2',
-                'max:100',
-            ],
-        ];
-    }
-
-    public function messages()
-    {
-        return [
-            // Name
-            'name.required' => 'Le nom est obligatoire.',
-            'name.min' => 'Le nom doit contenir au moins 2 caractères.',
-            'name.max' => 'Le nom ne peut pas dépasser 255 caractères.',
-            'name.regex' => 'Le nom ne peut contenir que des lettres, espaces, tirets et apostrophes.',
-            
-            // Username
-            'username.min' => 'Le nom d\'utilisateur doit contenir au moins 3 caractères.',
-            'username.max' => 'Le nom d\'utilisateur ne peut pas dépasser 50 caractères.',
-            'username.regex' => 'Le nom d\'utilisateur ne peut contenir que des lettres, chiffres, tirets et underscores.',
-            'username.unique' => 'Ce nom d\'utilisateur est déjà utilisé.',
-            
-            
-            // Phone
-            'phone.regex' => 'Le numéro de téléphone n\'est pas valide. Utilisez uniquement des chiffres, espaces et les caractères + - ( ).',
-            'phone.min' => 'Le numéro de téléphone doit contenir au moins 8 caractères.',
-            'phone.max' => 'Le numéro de téléphone ne peut pas dépasser 20 caractères.',
-            'phone.unique' => 'Ce numéro de téléphone est déjà utilisé.',
-            
-            // Address
-            'address.max' => 'L\'adresse ne peut pas dépasser 255 caractères.',
-            
-            // City
-            'city.min' => 'Le nom de la ville doit contenir au moins 2 caractères.',
-            'city.max' => 'Le nom de la ville ne peut pas dépasser 100 caractères.',
-            
-            // Country
-            'country.min' => 'Le nom du pays doit contenir au moins 2 caractères.',
-            'country.max' => 'Le nom du pays ne peut pas dépasser 100 caractères.',
-        ];
-    }
-
-    public function validationAttributes()
-    {
-        return [
-            'name' => 'nom',
-            'username' => 'nom d\'utilisateur',
-            'phone' => 'téléphone',
-            'address' => 'adresse',
-            'city' => 'ville',
-            'country' => 'pays',
+            'phone' => ['nullable', 'string', 'max:20'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'country' => ['nullable', 'string', 'max:100'],
         ];
     }
 
     public function save()
     {
-        $user = Auth::user();
-
         $validated = $this->validate();
+        
+        // On s'assure que l'email n'est jamais mis à jour ici
+        Auth::user()->update($validated);
 
-        $user->fill($validated);
-
-        try {
-            
-            // Log des changements
-            $changes = array_diff_assoc($validated, $user->only(array_keys($validated)));
-            
-            $user->update($validated);
-
-            flash()->success('Vos informations ont été mises à jour avec succès.');
-            $this->dispatch('profile-updated');
-        } catch (\Exception $e) {
-            flash()->error('Erreur lors de la mise à jour: ' . $e->getMessage());
-        }
+        flash()->success('Informations mises à jour.');
+        
+        // Rafraîchir le composant parent (Profile) pour mettre à jour le nom dans le header s'il change
+        $this->dispatch('profile-updated'); 
     }
 
     public function cancel()
     {
         $this->mount();
-        flash()->info('Modifications annulées.');
-    }
-
-    // Validation en temps réel pour username
-    public function updatedUsername($value)
-    {
-        if ($value) {
-            $this->validateOnly('username');
-        }
-    }
-
-    // Validation en temps réel pour phone
-    public function updatedPhone($value)
-    {
-        if ($value) {
-            $this->validateOnly('phone');
-        }
+        $this->resetErrorBag(); // Enlève les messages d'erreur rouges
     }
 }; 
 ?>
 
 <div>
-    <div class="mb-4">
-        <flux:subheading class="text-sm text-gray-600">
-            Gérez vos informations personnelles
-        </flux:subheading>
+    <div class="mb-6">
+        <flux:heading level="2">Informations personnelles</flux:heading>
+        <flux:subheading>Mettez à jour vos informations de profil public.</flux:subheading>
     </div>
 
-    <form wire:submit="save">
-        <div class="space-y-4">
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <!-- Nom complet -->
+    <form wire:submit="save" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <flux:input wire:model="name" label="Nom complet" icon="user" required />
+            
+            <div class="relative opacity-75">
                 <flux:input 
-                    wire:model.blur="name" 
-                    label="Nom complet" 
-                    placeholder="Jean Dupont" 
-                    required 
+                    wire:model="email" 
+                    label="Adresse Email" 
+                    icon="envelope" 
+                    readonly 
+                    disabled
+                    class="bg-gray-100 cursor-not-allowed text-gray-500"
                 />
-                
-                <!-- Nom d'utilisateur -->
-                <flux:input 
-                    wire:model.blur="username" 
-                    label="Nom d'utilisateur" 
-                    placeholder="jean_dupont" 
-                />
-                
-                <!-- Téléphone -->
-                <flux:input 
-                    wire:model.blur="phone" 
-                    label="Téléphone" 
-                    type="tel" 
-                    placeholder="00 00 00 00 00" 
-                />
-                
-                <!-- Ville -->
-                <flux:input 
-                    wire:model.blur="city" 
-                    label="Ville" 
-                    placeholder="Abidjan" 
-                />
-                
-                <!-- Pays -->
-                <flux:input 
-                    wire:model.blur="country" 
-                    label="Pays" 
-                    placeholder="Côte d'Ivoire" 
-                />
-
-                <!-- Adresse complète -->
-                <flux:input 
-                    wire:model.blur="address" 
-                    label="Adresse" 
-                    placeholder="123 Rue de la République" 
-                />
+                <div class="absolute right-3 top-[34px] text-gray-400 pointer-events-none">
+                    <flux:icon.lock-closed variant="micro" />
+                </div>
             </div>
 
-            <!-- Boutons d'action -->
-            <div class="flex justify-end gap-2">
-                <flux:button 
-                    type="button" 
-                    wire:click="cancel" 
-                    variant="filled"
-                    wire:loading.attr="disabled">
+            <flux:input wire:model.blur="username" label="Nom d'utilisateur" icon="at-symbol" />
+            
+            <flux:input wire:model="phone" label="Téléphone" icon="phone" />
+            
+            <flux:input wire:model="city" label="Ville" icon="building-office" />
+            
+            <flux:input wire:model="country" label="Pays" icon="globe-alt" />
+
+            <div class="md:col-span-2">
+                <flux:input wire:model="address" label="Adresse postale" icon="map-pin" />
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
+                <flux:button type="button" wire:click="cancel" variant="ghost">
                     Annuler
                 </flux:button>
-                <flux:button 
-                    type="submit" 
-                    variant="primary" 
-                    icon="check"
-                    wire:loading.attr="disabled"
-                    wire:target="save">
-                    Enregistrer
-                </flux:button>
-            </div>
+
+            <flux:button type="submit" variant="primary" icon="check" wire:loading.attr="disabled">
+                Enregistrer
+            </flux:button>
         </div>
     </form>
 </div>

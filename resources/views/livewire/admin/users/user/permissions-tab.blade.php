@@ -1,74 +1,108 @@
 <?php
 
 use App\Models\User;
+use Spatie\Permission\Models\Permission;
 use Livewire\Volt\Component;
 
 new class extends Component {
     public User $user;
+    public $search = '';
+    public $permissionToAdd = '';
 
     public function mount(User $user): void
     {
-        $this->user = $user->load('permissions');
+        $this->user = $user;
+    }
+
+    // Liste filtrée des permissions que l'utilisateur n'a PAS encore (ni directes, ni via rôles)
+    public function getAvailablePermissionsProperty()
+    {
+        return Permission::where('name', 'like', '%' . $this->search . '%')
+            ->whereNotIn('id', $this->user->getAllPermissions()->pluck('id'))
+            ->limit(10) // Limite pour la perf UI
+            ->get();
+    }
+
+    public function addPermission($permissionName)
+    {
+        if (!auth()->user()->can('manage permissions')) return;
+
+        $this->user->givePermissionTo($permissionName);
+        $this->dispatch('user-updated');
+        $this->permissionToAdd = ''; // Reset select if used
+        flash()->success("Permission '{$permissionName}' accordée.");
+    }
+
+    public function revokePermission($permissionName)
+    {
+        if (!auth()->user()->can('manage permissions')) return;
+
+        $this->user->revokePermissionTo($permissionName);
+        $this->dispatch('user-updated');
+        flash()->success("Permission révoquée.");
     }
 }; ?>
 
-<div>
-    <h3 class="text-lg font-semibold mb-4">Permissions de l'utilisateur</h3>
-
-    @if($user->getAllPermissions()->count() > 0)
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-zinc-200">
-                <thead class="bg-zinc-50">
-                    <tr>
-                        <th scope="col"
-                            class="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                            Permission
-                        </th>
-                        <th scope="col"
-                            class="px-6 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                            Description
-                        </th>
-                        <th scope="col"
-                            class="px-6 py-3 text-right text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                            Actions
-                        </th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-zinc-200">
-                    @foreach($user->getAllPermissions() as $permission)
-                        <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-zinc-900">
-                                {{ $permission->name }}
-                            </td>
-                            <td class="px-6 py-4 text-sm text-zinc-500">
-                                {{ $permission->description ?? 'Aucune description' }}
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                @can('manage permissions')
-                                    <button class="text-red-600 hover:text-red-900"
-                                        onclick="confirm('Retirer cette permission ?') || event.stopImmediatePropagation()">
-                                        Retirer
-                                    </button>
-                                @endcan
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-    @else
-        <div class="text-center py-12">
-            <svg class="mx-auto h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-            <h3 class="mt-2 text-sm font-medium text-zinc-900">Aucune permission</h3>
-            <p class="mt-1 text-sm text-zinc-500">Cet utilisateur n'a aucune permission directe assignée.</p>
-            @can('manage permissions')
-                <div class="mt-6">
-                    <flux:button>Ajouter une permission</flux:button>
+<div class="space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {{-- Colonne Gauche : Liste des permissions directes --}}
+        <div class="lg:col-span-2 space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="font-semibold text-zinc-900">Permissions directes</h3>
+                    <p class="text-xs text-zinc-500">Exceptions accordées hors des rôles.</p>
                 </div>
-            @endcan
+                <flux:badge color="zinc">{{ $user->getDirectPermissions()->count() }}</flux:badge>
+            </div>
+
+            @if($user->getDirectPermissions()->count() > 0)
+                <div class="bg-white border border-zinc-200 rounded-lg divide-y divide-zinc-100 overflow-hidden">
+                    @foreach($user->getDirectPermissions() as $permission)
+                        <div class="flex items-center justify-between p-3 hover:bg-zinc-50">
+                            <div class="flex items-center gap-3">
+                                <flux:icon.key variant="micro" class="text-zinc-400" />
+                                <span class="text-sm font-medium text-zinc-700">{{ $permission->name }}</span>
+                            </div>
+                            @can('manage permissions')
+                                <flux:button size="xs" variant="ghost" class="text-zinc-400 hover:text-red-500" 
+                                    wire:click="revokePermission('{{ $permission->name }}')">
+                                    <flux:icon.x-mark class="size-4" />
+                                </flux:button>
+                            @endcan
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <div class="p-6 bg-zinc-50 rounded-lg border border-dashed border-zinc-200 text-center">
+                    <p class="text-sm text-zinc-500 italic">Aucune permission directe. L'utilisateur hérite tout de ses rôles.</p>
+                </div>
+            @endif
         </div>
-    @endif
+
+        {{-- Colonne Droite : Outil d'ajout rapide --}}
+        @can('manage permissions')
+        <div class="bg-zinc-50 p-4 rounded-lg border border-zinc-200 h-fit">
+            <h4 class="font-medium text-sm text-zinc-900 mb-3">Accorder une exception</h4>
+            
+            <flux:input wire:model.live.debounce.300ms="search" placeholder="Rechercher une permission..." icon="magnifying-glass" class="mb-3" />
+
+            <div class="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                @forelse($this->availablePermissions as $perm)
+                    <button wire:click="addPermission('{{ $perm->name }}')" 
+                        class="w-full flex items-center justify-between p-2 text-left text-xs bg-white border border-zinc-200 rounded hover:border-primary hover:ring-1 hover:ring-primary transition-all group">
+                        <span class="truncate pr-2">{{ $perm->name }}</span>
+                        <flux:icon.plus class="size-3 text-zinc-300 group-hover:text-primary" />
+                    </button>
+                @empty
+                    @if(strlen($search) > 0)
+                        <p class="text-xs text-zinc-400 text-center py-2">Aucun résultat trouvé.</p>
+                    @else
+                        <p class="text-xs text-zinc-400 text-center py-2">Tapez pour rechercher...</p>
+                    @endif
+                @endforelse
+            </div>
+        </div>
+        @endcan
+    </div>
 </div>

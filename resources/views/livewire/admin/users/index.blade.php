@@ -3,14 +3,14 @@
 use Livewire\Volt\Component;
 use App\Models\User;
 use Livewire\Attributes\{Url, On, Computed};
-use App\Traits\WithDataTable; // Import the new trait
+use App\Traits\WithDataTable; 
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\DB;
 
 new class extends Component {
-    use WithDataTable; // <--- This handles search, sort, pagination, select
+    use WithDataTable; 
 
-    // --- CUSTOM FILTERS (Specific to this table) ---
+    // --- FILTRES ---
     #[Url]
     public $statusFilter = 'all';
     #[Url]
@@ -30,13 +30,14 @@ new class extends Component {
     {
         try {
             $user = User::findOrFail($userId);
-            $user->suspend();
+            // Appelle la méthode ajoutée au modèle
+            $user->suspend(); 
             $this->refresh();
             flash()->warning("Utilisateur {$user->name} suspendu.");
         } catch (\LogicException $e) {
             flash()->error($e->getMessage());
         } catch (\Exception $e) {
-            flash()->error('Erreur lors de la suspension : ' . $e->getMessage());
+            flash()->error('Erreur : ' . $e->getMessage());
         }
     }
 
@@ -47,10 +48,8 @@ new class extends Component {
             $user->unSuspend();
             $this->refresh();
             flash()->success("Utilisateur {$user->name} réactivé.");
-        } catch (\LogicException $e) {
-            flash()->error($e->getMessage());
         } catch (\Exception $e) {
-            flash()->error('Erreur lors de la réactivation : ' . $e->getMessage());
+            flash()->error('Erreur : ' . $e->getMessage());
         }
     }
 
@@ -60,7 +59,7 @@ new class extends Component {
             $user = User::findOrFail($userId);
 
             if (!$user->canBeDeleted()) {
-                flash()->error('Action impossible: cet utilisateur est protégé.');
+                flash()->error('Action impossible : cet utilisateur est protégé.');
                 return;
             }
 
@@ -69,7 +68,6 @@ new class extends Component {
 
             flash()->success("Utilisateur {$userName} supprimé.");
             $this->clearSelection();
-            $this->resetPage();
         } catch (\Exception $e) {
             flash()->error('Erreur lors de la suppression : ' . $e->getMessage());
         }
@@ -94,29 +92,22 @@ new class extends Component {
 
             foreach ($users as $user) {
                 try {
+                    // Vérification de sécurité via le modèle
                     if ($user->canBeSuspended()) {
                         $user->suspend();
                         $count++;
                     }
                 } catch (\LogicException $e) {
-                    $errors[] = "{$user->name}: {$e->getMessage()}";
+                    $errors[] = $user->name;
                 }
             }
 
             DB::commit();
             $this->refresh();
 
-            if ($count > 0) {
-                flash()->warning("{$count} utilisateur(s) suspendu(s).");
-            }
-
-            if (!empty($errors)) {
-                flash()->error('Certains utilisateurs n\'ont pas pu être suspendus : ' . implode(', ', $errors));
-            }
-
-            if ($count === 0 && empty($errors)) {
-                flash()->warning("Aucun utilisateur n'a pu être suspendu.");
-            }
+            if ($count > 0) flash()->warning("{$count} utilisateur(s) suspendu(s).");
+            if (!empty($errors)) flash()->error('Certains utilisateurs protégés n\'ont pas été suspendus.');
+            
         } catch (\Exception $e) {
             DB::rollBack();
             flash()->error('Erreur lors de la suspension en masse : ' . $e->getMessage());
@@ -127,39 +118,18 @@ new class extends Component {
 
     public function bulkUnSuspend()
     {
-        if (empty($this->selected)) {
-            flash()->warning('Aucun utilisateur sélectionné.');
-            return;
-        }
+        if (empty($this->selected)) return;
 
         $this->bulkActionInProgress = true;
 
         try {
-            DB::beginTransaction();
-
-            $users = User::whereIn('id', $this->selected)->suspended()->get();
-            $count = 0;
-
-            foreach ($users as $user) {
-                try {
-                    $user->unSuspend();
-                    $count++;
-                } catch (\LogicException $e) {
-                    // Log mais continue
-                }
-            }
-
-            DB::commit();
+            // Pas de restriction majeure sur la réactivation, un update direct est possible
+            User::whereIn('id', $this->selected)->update(['suspended_at' => null]);
+            
             $this->refresh();
-
-            if ($count > 0) {
-                flash()->success("{$count} utilisateur(s) réactivé(s).");
-            } else {
-                flash()->warning("Aucun utilisateur n'a pu être réactivé.");
-            }
+            flash()->success("Utilisateurs sélectionnés réactivés.");
         } catch (\Exception $e) {
-            DB::rollBack();
-            flash()->error('Erreur lors de la réactivation en masse : ' . $e->getMessage());
+            flash()->error('Erreur : ' . $e->getMessage());
         } finally {
             $this->bulkActionInProgress = false;
         }
@@ -167,10 +137,7 @@ new class extends Component {
 
     public function bulkDelete()
     {
-        if (empty($this->selected)) {
-            flash()->warning('Aucun utilisateur sélectionné.');
-            return;
-        }
+        if (empty($this->selected)) return;
 
         $this->bulkActionInProgress = true;
 
@@ -178,6 +145,7 @@ new class extends Component {
             DB::beginTransaction();
 
             $users = User::whereIn('id', $this->selected)->get();
+            // Filtrer pour ne supprimer que ceux qu'on a le droit de supprimer
             $deletableUsers = $users->filter(fn($u) => $u->canBeDeleted());
 
             if ($deletableUsers->isEmpty()) {
@@ -195,13 +163,13 @@ new class extends Component {
             flash()->success("{$count} utilisateur(s) supprimé(s).");
         } catch (\Exception $e) {
             DB::rollBack();
-            flash()->error('Erreur lors de la suppression en masse : ' . $e->getMessage());
+            flash()->error('Erreur technique : ' . $e->getMessage());
         } finally {
             $this->bulkActionInProgress = false;
         }
     }
 
-    // --- QUERY LOGIC (Required by Trait) ---
+    // --- REQUÊTE ---
     public function getQuery()
     {
         return User::query()
@@ -221,19 +189,10 @@ new class extends Component {
         return $this->getQuery()->paginate($this->perPage);
     }
 
-    // Lifecycle hooks for custom filters
-    public function updatingStatusFilter()
-    {
-        $this->resetPage();
-        $this->clearSelection();
-    }
-    public function updatingRoleFilter()
-    {
-        $this->resetPage();
-        $this->clearSelection();
-    }
+    // Hooks Lifecycle
+    public function updatingStatusFilter() { $this->resetPage(); $this->clearSelection(); }
+    public function updatingRoleFilter() { $this->resetPage(); $this->clearSelection(); }
 }; ?>
-
 
 
 <x-layouts.app.content :title="__('Utilisateurs')" :heading="__('Gestion des Utilisateurs')">
@@ -243,7 +202,7 @@ new class extends Component {
         <flux:breadcrumbs.item icon="users"/>
     </x-slot:breadcrumbs>
 
-    <div class="card flex h-full w-full flex-1 flex-col gap-4 ">
+    <div class="card flex h-full w-full flex-1 flex-col gap-4">
 
         <x-data-table.layout heading="Liste des utilisateurs">
 
@@ -257,8 +216,7 @@ new class extends Component {
                 <flux:select wire:model.live="roleFilter" class="w-36!">
                     <flux:select.option value="all">Tous rôles</flux:select.option>
                     @foreach (Role::pluck('name') as $role)
-                        <flux:select.option value="{{ $role }}">{{ ucfirst($role) }}
-                        </flux:select.option>
+                        <flux:select.option value="{{ $role }}">{{ ucfirst($role) }}</flux:select.option>
                     @endforeach
                 </flux:select>
             </x-slot:filters>
@@ -270,7 +228,7 @@ new class extends Component {
                 <flux:button size="sm" square variant="warning" wire:click="bulkSuspend">
                     <flux:icon.lock-closed variant="micro" />
                 </flux:button>
-                <flux:button size="sm" square variant="danger" wire:click="bulkDelete" wire:confirm="Sur?">
+                <flux:button size="sm" square variant="danger" wire:click="bulkDelete" wire:confirm="Êtes-vous sûr de vouloir supprimer ces utilisateurs ?">
                     <flux:icon.trash variant="micro" />
                 </flux:button>
             </x-slot:bulkActions>
@@ -279,7 +237,8 @@ new class extends Component {
                 <x-data-table.header column="name" label="Utilisateur" />
                 <x-data-table.header label="Rôles" :sortable="false" class="hidden md:table-cell" />
                 <x-data-table.header column="created_at" label="Date création" class="hidden md:table-cell" />
-                <x-data-table.header :sortable="false" class="sr-only" /> </x-slot:headers>
+                <x-data-table.header :sortable="false" class="sr-only" /> 
+            </x-slot:headers>
 
             <x-slot:rows>
                 @forelse($this->users as $user)
@@ -290,14 +249,11 @@ new class extends Component {
 
                         <td class="px-3 py-2">
                             <div class="flex items-center gap-1.5">
-                                @if ($user->hasCustomAvatar())
-                                    <flux:avatar :src="Storage::url($user->avatar_url)" size="sm" />
-                                @else
-                                    <flux:avatar :initials="$user->initials()" size="sm" />
-                                @endif
+                                {{-- Utilisation de la méthode centralisée dans le modèle --}}
+                                <flux:avatar class="font-semibold" :src="$user->avatar()" size="sm" />
+                                
                                 <div class="">
-                                    <flux:text class="leading-4" variant="strong" size="sm">{{ $user->name }}
-                                    </flux:text>
+                                    <flux:text class="leading-4" variant="strong" size="sm">{{ $user->name }}</flux:text>
                                     <flux:text class="leading-4">{{ $user->email }}</flux:text>
                                 </div>
                                 @if ($user->isSuspended())
@@ -313,10 +269,7 @@ new class extends Component {
                         </td>
 
                         <td class="hidden md:table-cell px-3 py-2 text-gray-600">
-                            <flux:text>{{ $user->created_at->format('d/m/Y H:i:s') }}</flux:text>
-                            <flux:text class="text-xs text-gray-400">Modifié:
-                                {{ $user->updated_at->format('d/m/Y H:i:s') }}</flux:text>
-
+                            <flux:text>{{ $user->created_at->format('d/m/Y H:i') }}</flux:text>
                         </td>
 
                         <td class="px-3 py-2 text-right">
@@ -330,7 +283,7 @@ new class extends Component {
                                     </flux:menu.item>
 
                                     {{-- User permissions --}}
-                                    <flux:menu.item variant="danger" icon="shield-check"
+                                    <flux:menu.item variant="warning" icon="shield-check"
                                         wire:click="$dispatch('open-user-permissions', { userId: {{ $user->id }} })">
                                         Permissions
                                     </flux:menu.item>
@@ -352,7 +305,8 @@ new class extends Component {
 
                                         @if ($user->canBeDeleted())
                                             <flux:menu.item icon="trash" variant="danger"
-                                                wire:click="delete({{ $user->id }})">
+                                                wire:click="delete({{ $user->id }})"
+                                                wire:confirm="Voulez-vous vraiment supprimer cet utilisateur ?">
                                                 Supprimer
                                             </flux:menu.item>
                                         @endif

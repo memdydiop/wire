@@ -5,7 +5,6 @@ use Livewire\Volt\Component;
 use App\Traits\WithDataTable;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
-use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\{Url, On, Computed};
 use App\Notifications\InvitationNotification;
 
@@ -20,53 +19,45 @@ new class extends Component {
 
     public $bulkActionInProgress = false;
 
-    // --- Helper pour l'affichage (Nettoie le Blade) ---
+    // Helper UI : Retourne des couleurs sémantiques pour Flux (success, danger, warning)
     public function getStatusBadge(Invitation $invitation): array
     {
         if ($invitation->isAccepted()) {
             return [
-                'color' => 'green', 
+                'variant' => 'success', // Vert
                 'label' => 'Acceptée', 
-                'date_label' => 'Acceptée le', 
+                'date_label' => 'Validée le', 
                 'date' => $invitation->accepted_at
             ];
         }
         if ($invitation->isExpired()) {
             return [
-                'color' => 'red', 
+                'variant' => 'danger', // Rouge
                 'label' => 'Expirée', 
                 'date_label' => 'Expirée le', 
                 'date' => $invitation->expires_at
             ];
         }
         return [
-            'color' => 'yellow', 
+            'variant' => 'warning', // Jaune/Orange
             'label' => 'En attente', 
             'date_label' => 'Expire le', 
             'date' => $invitation->expires_at
         ];
     }
 
-    // --- Actions Individuelles ---
+    // --- ACTIONS INDIVIDUELLES ---
 
     public function resendInvitation($invitationId)
     {
         try {
             $invitation = Invitation::findOrFail($invitationId);
-            
-            if ($invitation->isAccepted()) {
-                flash()->error('Déjà acceptée.');
-                return;
-            }
-
             $invitation->resend(7);
-            
-            // Notification via le trait Notifiable
             $invitation->notify(new InvitationNotification($invitation));
 
-            flash()->success('Invitation renvoyée.');
+            flash()->success('Invitation renvoyée avec succès.');
         } catch (\Exception $e) {
-            flash()->error('Erreur : ' . $e->getMessage());
+            flash()->error('Impossible de renvoyer : ' . $e->getMessage());
         }
     }
 
@@ -84,8 +75,7 @@ new class extends Component {
     public function delete($invitationId)
     {
         try {
-            $invitation = Invitation::findOrFail($invitationId);
-            $invitation->delete();
+            Invitation::findOrFail($invitationId)->delete();
             flash()->success('Invitation supprimée.');
             $this->clearSelection();
         } catch (\Exception $e) {
@@ -93,9 +83,9 @@ new class extends Component {
         }
     }
 
-    // --- Actions en masse (Refactorisées pour être DRY) ---
+    // --- ACTIONS DE MASSE ---
 
-    protected function executeBulkAction(callable $action)
+    protected function executeBulkAction(callable $action, string $successMessage)
     {
         if (empty($this->selected)) {
             flash()->warning('Aucune sélection.');
@@ -106,11 +96,15 @@ new class extends Component {
 
         try {
             DB::beginTransaction();
-            $action($this->selected);
+            $count = $action($this->selected);
             DB::commit();
             
             $this->clearSelection();
             $this->resetPage();
+
+            if ($count > 0) flash()->success($successMessage);
+            else flash()->warning("Aucune action effectuée.");
+
         } catch (\Exception $e) {
             DB::rollBack();
             flash()->error('Erreur technique : ' . $e->getMessage());
@@ -122,47 +116,40 @@ new class extends Component {
     public function bulkDelete()
     {
         $this->executeBulkAction(function ($ids) {
-            $count = Invitation::whereIn('id', $ids)->whereNull('accepted_at')->delete();
-            flash()->success("{$count} invitation(s) supprimée(s).");
-        });
+            return Invitation::whereIn('id', $ids)->whereNull('accepted_at')->delete();
+        }, "Invitations supprimées.");
     }
 
     public function bulkRevoke()
     {
         $this->executeBulkAction(function ($ids) {
-            $count = 0;
             $invitations = Invitation::whereIn('id', $ids)->whereNull('accepted_at')->get();
-            foreach ($invitations as $inv) {
-                $inv->revoke();
-                $count++;
-            }
-            flash()->success("{$count} invitation(s) révoquée(s).");
-        });
+            $invitations->each->revoke();
+            return $invitations->count();
+        }, "Invitations révoquées.");
     }
 
     public function bulkResend()
     {
         $this->executeBulkAction(function ($ids) {
             $invitations = Invitation::whereIn('id', $ids)->whereNull('accepted_at')->get();
-            $count = 0;
             foreach ($invitations as $inv) {
                 $inv->resend(7);
                 $inv->notify(new InvitationNotification($inv));
-                $count++;
             }
-            flash()->success("{$count} invitation(s) renvoyée(s).");
-        });
+            return $invitations->count();
+        }, "Invitations renvoyées.");
     }
 
-    // --- Query & Hooks ---
+    // --- QUERY ---
 
     #[On('invitation-sent')]
-    public function refreshInvitations() { unset($this->invitations); }
+    public function refreshList() { $this->resetPage(); }
 
     public function getQuery()
     {
         return Invitation::query()
-            ->with('sender') // Optimisation N+1
+            ->with('sender') // Eager loading pour éviter N+1 sur l'avatar
             ->when($this->search, fn($q) => $q->where('email', 'like', "%{$this->search}%"))
             ->when($this->statusFilter !== 'all', fn($q) => match($this->statusFilter) {
                 'valid' => $q->valid(),
@@ -190,6 +177,7 @@ new class extends Component {
     public function updatingStatusFilter() { $this->resetPage(); $this->clearSelection(); }
     public function updatingRoleFilter() { $this->resetPage(); $this->clearSelection(); }
 }; ?>
+
 
 <x-layouts.app.content :title="__('Invitations')" :heading="__('Gestion des Invitations')">
 
@@ -229,15 +217,15 @@ new class extends Component {
             <x-slot:bulkActions>
                 <div class="flex gap-2" wire:loading.class="opacity-50 pointer-events-none">
                     <flux:button size="sm" square variant="primary" wire:click="bulkResend"
-                        wire:confirm="Renvoyer la sélection ?" :disabled="$bulkActionInProgress" tooltip="Renvoyer">
+                        wire:confirm="Renvoyer les invitations sélectionnées ?" :disabled="$bulkActionInProgress" tooltip="Renvoyer">
                         <flux:icon.paper-airplane variant="micro" />
                     </flux:button>
                     <flux:button size="sm" square variant="warning" wire:click="bulkRevoke"
-                        wire:confirm="Révoquer la sélection ?" :disabled="$bulkActionInProgress" tooltip="Révoquer">
+                        wire:confirm="Révoquer les invitations sélectionnées ?" :disabled="$bulkActionInProgress" tooltip="Révoquer">
                         <flux:icon.no-symbol variant="micro" />
                     </flux:button>
                     <flux:button size="sm" square variant="danger" wire:click="bulkDelete"
-                        wire:confirm="Supprimer la sélection ?" :disabled="$bulkActionInProgress" tooltip="Supprimer">
+                        wire:confirm="Supprimer définitivement la sélection ?" :disabled="$bulkActionInProgress" tooltip="Supprimer">
                         <flux:icon.trash variant="micro" />
                     </flux:button>
                 </div>
@@ -271,39 +259,34 @@ new class extends Component {
                         </td>
 
                         <td class="hidden lg:table-cell px-3 py-2">
-                            @if ($invitation->sender)
-                                <div class="flex items-center gap-2">
-                                    @if ($invitation->sender->hasCustomAvatar())
-                                        <flux:avatar :src="Storage::url($invitation->sender->avatar_url)" size="sm" />
-                                    @else
-                                        <flux:avatar :initials="$invitation->sender->initials()" size="sm" />
-                                    @endif
-                                    <flux:text class="text-gray-600">{{ $invitation->sender->name }}</flux:text>
-                                </div>
-                            @else
-                                <flux:text size="sm" class="text-gray-400 italic">Système</flux:text>
-                            @endif
+                            <div class="flex items-center gap-2">
+                                {{-- Utilisation de la méthode avatar() du modèle User corrigé précédemment --}}
+                                <flux:avatar :src="$invitation->sender->avatar()" size="sm" />
+                                <flux:text class="text-gray-600">{{ $invitation->sender->name }}</flux:text>
+                            </div>
                         </td>
 
                         <td class="px-3 py-2">
                             @php $status = $this->getStatusBadge($invitation); @endphp
                             <div class="flex flex-col items-start gap-1">
-                                <flux:badge size="xs" color="{{ $status['color'] }}">
+                                <flux:badge size="xs" color="{{ $status['variant'] }}">
                                     {{ $status['label'] }}
                                 </flux:badge>
-                                <flux:text size="2xs" class="text-gray-400">
-                                    {{ $status['date_label'] }} {{ $status['date']->format('d/m H:i') }}
-                                </flux:text>
+                                @if($status['date'])
+                                    <flux:text size="2xs" class="text-gray-400">
+                                        {{ $status['date_label'] }} {{ $status['date']->format('d/m H:i') }}
+                                    </flux:text>
+                                @endif
                             </div>
                         </td>
 
                         <td class="hidden xl:table-cell px-3 py-2">
-                            <flux:text class="">
+                            <flux:text>
                                 {{ $invitation->created_at->format('d/m/Y') }}
                             </flux:text>
                         </td>
 
-                        <td class="px-3 py-2 text-right">
+                        <td class="px-3 py-2 flex items-center justify-end">
                             @if (!$invitation->isAccepted())
                                 <flux:dropdown>
                                     <flux:button size="sm" icon="ellipsis-vertical" variant="ghost" />
@@ -315,13 +298,13 @@ new class extends Component {
                                             Révoquer
                                         </flux:menu.item>
                                         <flux:menu.separator />
-                                        <flux:menu.item icon="trash" variant="danger" wire:click="delete({{ $invitation->id }})" wire:confirm="Supprimer ?">
+                                        <flux:menu.item icon="trash" variant="danger" wire:click="delete({{ $invitation->id }})" wire:confirm="Supprimer cette invitation ?">
                                             Supprimer
                                         </flux:menu.item>
                                     </flux:menu>
                                 </flux:dropdown>
                             @else
-                                <flux:icon.check-circle class="size-5 text-green-500 mx-auto" />
+                                <div class=" h-10 flex items-center"><flux:icon.check-circle class="size-5 text-green-500 mr-1" variant="solid" /></div>
                             @endif
                         </td>
                     </tr>
@@ -342,6 +325,7 @@ new class extends Component {
         </x-data-table.layout>
     </div>
 
+    {{-- Composant Modal pour créer une nouvelle invitation --}}
     <livewire:admin.users.send-invitation />
 
 </x-layouts.app.content>

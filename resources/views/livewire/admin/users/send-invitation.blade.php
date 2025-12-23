@@ -18,7 +18,7 @@ new class extends Component {
     public string $role = 'user';
 
     #[Validate('required|integer|min:1|max:30')]
-    public int $expiryDays = 7;
+    public int $expiryDays = 1;
 
     /**
      * Règles de validation personnalisées
@@ -70,7 +70,7 @@ new class extends Component {
     public function mount()
     {
         $this->role = 'user';
-        $this->expiryDays = 7;
+        $this->expiryDays = 1;
     }
 
     /**

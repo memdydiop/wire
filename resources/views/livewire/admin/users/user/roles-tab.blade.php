@@ -1,79 +1,138 @@
 <?php
 
 use App\Models\User;
+use Spatie\Permission\Models\Role;
 use Livewire\Volt\Component;
 
 new class extends Component {
     public User $user;
+    public $selectedRole = '';
 
     public function mount(User $user): void
     {
-        $this->user = $user->load('roles.permissions');
+        $this->user = $user;
+    }
+
+    // Récupérer uniquement les rôles que l'utilisateur n'a PAS encore
+    public function getAvailableRolesProperty()
+    {
+        return Role::whereNotIn('id', $this->user->roles->pluck('id'))->pluck('name');
+    }
+
+    public function assignRole()
+    {
+        $this->validate(['selectedRole' => 'required|string|exists:roles,name']);
+
+        if (!auth()->user()->can('manage roles')) {
+            flash()->error('Non autorisé.');
+            return;
+        }
+
+        $this->user->assignRole($this->selectedRole);
+        $this->reset('selectedRole');
+        
+        // Rafraîchir
+        $this->user->load('roles.permissions');
+        $this->dispatch('user-updated');
+        
+        flash()->success("Rôle ajouté avec succès.");
+    }
+
+    public function removeRole($roleName)
+    {
+        if (!auth()->user()->can('manage roles')) return;
+
+        $this->user->removeRole($roleName);
+        $this->user->load('roles.permissions');
+        $this->dispatch('user-updated');
+        flash()->success("Rôle retiré.");
     }
 }; ?>
 
-<div>
-    <h3 class="text-lg font-semibold mb-4">Rôles de l'utilisateur</h3>
+<div class="space-y-6">
+    {{-- Header avec Action d'ajout --}}
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-200 pb-4">
+        <div>
+            <h3 class="text-lg font-semibold text-zinc-900">Rôles assignés</h3>
+            <p class="text-sm text-zinc-500">Gérez les groupes d'accès de l'utilisateur.</p>
+        </div>
 
-    @if($user->roles->count() > 0)
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            @foreach($user->roles as $role)
-                <div class="border border-zinc-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div class="flex items-start justify-between mb-3">
-                        <div>
-                            <h4 class="text-base font-semibold text-zinc-900">{{ $role->name }}</h4>
-                            @if($role->description)
-                                <p class="text-sm text-zinc-500 mt-1">{{ $role->description }}</p>
-                            @endif
-                        </div>
-                        @can('manage roles')
-                            <button class="text-zinc-400 hover:text-red-600"
-                                onclick="confirm('Retirer ce rôle ?') || event.stopImmediatePropagation()">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        @endcan
+        @can('manage roles')
+            <div class="flex w-full sm:w-auto gap-2">
+                @if($this->availableRoles->count() > 0)
+                    <div class="w-full sm:w-48">
+                        <flux:select wire:model="selectedRole" placeholder="Choisir un rôle..." >
+                            @foreach($this->availableRoles as $role)
+                                <flux:select.option value="{{ $role }}">{{ ucfirst($role) }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
                     </div>
+                    <flux:button variant="primary" wire:click="assignRole" :disabled="empty($selectedRole)">
+                        Ajouter
+                    </flux:button>
+                @else
+                    <flux:badge color="zinc">Tous les rôles sont assignés</flux:badge>
+                @endif
+            </div>
+        @endcan
+    </div>
 
-                    @if($role->permissions->count() > 0)
-                        <div class="mt-3 pt-3 border-t border-zinc-100">
-                            <p class="text-xs font-medium text-zinc-700 mb-2">
-                                Permissions ({{ $role->permissions->count() }})
-                            </p>
-                            <div class="flex flex-wrap gap-1">
-                                @foreach($role->permissions->take(5) as $permission)
-                                    <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-zinc-100 text-zinc-700">
-                                        {{ $permission->name }}
-                                    </span>
-                                @endforeach
-                                @if($role->permissions->count() > 5)
-                                    <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-zinc-100 text-zinc-700">
-                                        +{{ $role->permissions->count() - 5 }}
-                                    </span>
-                                @endif
+    {{-- Liste des rôles --}}
+    @if($user->roles->count() > 0)
+        <div class="grid grid-cols-1 gap-4">
+            @foreach($user->roles as $role)
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-zinc-200 rounded-lg bg-white hover:border-primary/30 transition-colors group">
+                    
+                    <div class="flex-1">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 bg-primary/10 rounded-lg text-primary">
+                                <flux:icon.shield-check variant="micro" />
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-zinc-900">{{ ucfirst($role->name) }}</h4>
+                                <div class="text-xs text-zinc-500 mt-0.5 flex items-center gap-2">
+                                    <span>ID: {{ $role->id }}</span>
+                                    <span>•</span>
+                                    <span>{{ $role->permissions->count() }} permission(s) incluse(s)</span>
+                                </div>
                             </div>
                         </div>
-                    @endif
+                    </div>
+
+                    <div class="mt-4 sm:mt-0 flex items-center gap-4">
+                        {{-- Indicateur visuel des permissions clés (optionnel) --}}
+                        <div class="hidden md:flex -space-x-1">
+                            @foreach($role->permissions->take(3) as $perm)
+                                <div class="size-6 rounded-full bg-zinc-100 border border-white flex items-center justify-center text-[10px] text-zinc-600" title="{{ $perm->name }}">
+                                    <flux:icon.key variant="micro" class="size-3" />
+                                </div>
+                            @endforeach
+                            @if($role->permissions->count() > 3)
+                                <div class="size-6 rounded-full bg-zinc-100 border border-white flex items-center justify-center text-[9px] font-bold text-zinc-500">
+                                    +{{ $role->permissions->count() - 3 }}
+                                </div>
+                            @endif
+                        </div>
+
+                        @can('manage roles')
+                            <flux:button 
+                                variant="ghost" 
+                                size="sm" 
+                                class="text-zinc-400 hover:text-red-500"
+                                wire:click="removeRole('{{ $role->name }}')"
+                                wire:confirm="Retirer le rôle '{{ $role->name }}' ?">
+                                <flux:icon.trash class="size-4" />
+                            </flux:button>
+                        @endcan
+                    </div>
                 </div>
             @endforeach
         </div>
     @else
-        <div class="text-center py-12">
-            <svg class="mx-auto h-12 w-12 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <h3 class="mt-2 text-sm font-medium text-zinc-900">Aucun rôle</h3>
-            <p class="mt-1 text-sm text-zinc-500">Cet utilisateur n'a aucun rôle assigné.</p>
-            @can('manage roles')
-                <div class="mt-6">
-                    <flux:button>Assigner un rôle</flux:button>
-                </div>
-            @endcan
+        <div class="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed border-zinc-200 rounded-xl bg-zinc-50/50">
+            <flux:icon.shield-exclamation class="size-12 text-zinc-300 mb-3" />
+            <h3 class="text-zinc-900 font-medium">Aucun rôle</h3>
+            <p class="text-zinc-500 text-sm max-w-xs mx-auto">Utilisez le sélecteur ci-dessus pour assigner le premier rôle à cet utilisateur.</p>
         </div>
     @endif
 </div>
